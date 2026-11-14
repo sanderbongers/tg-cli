@@ -1,4 +1,4 @@
-"""``tg messages`` — fetch recent messages from a Telegram group as JSON."""
+"""``tg messages`` — fetch recent messages from a Telegram chat as JSON."""
 
 from __future__ import annotations
 
@@ -22,7 +22,7 @@ _ID_BOUND = click.IntRange(min=0, max=MAX_MESSAGE_ID)
 
 
 @click.command()
-@click.argument("group")
+@click.argument("group", metavar="CHAT")
 @click.option(
     "--since",
     "since",
@@ -67,7 +67,7 @@ def messages(
     limit: int,
     pretty: bool,
 ) -> None:
-    """Fetch recent messages from GROUP, oldest first, as JSON."""
+    """Fetch recent messages from CHAT, oldest first, as JSON."""
     if after_id is not None and since is not None:
         raise click.UsageError("--after-id cannot be used with --since.")
     if through_id is not None and after_id is None:
@@ -92,7 +92,7 @@ async def _collect_messages(
     try:
         if not await client.is_user_authorized():
             raise AuthError()
-        entity = await resolve(client, group)
+        entity = await resolve(client, group, include_users=True)
         group_id = marked_peer_id(entity)
         link_base = message_link_base(entity)
         collected: list[Message] = []

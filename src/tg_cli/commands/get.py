@@ -1,4 +1,4 @@
-"""``tg get`` — fetch specific messages from a Telegram group as JSON."""
+"""``tg get`` — fetch specific messages from a Telegram chat as JSON."""
 
 from __future__ import annotations
 
@@ -16,7 +16,7 @@ from ._resolve import resolve
 
 
 @click.command()
-@click.argument("group")
+@click.argument("group", metavar="CHAT")
 @click.argument("message_ids", type=MESSAGE_ID, nargs=-1, required=True)
 @click.option(
     "--pretty",
@@ -25,7 +25,7 @@ from ._resolve import resolve
 )
 @handle_errors
 def get(group: str, message_ids: tuple[int, ...], pretty: bool) -> None:
-    """Fetch the messages MESSAGE_IDS from GROUP as JSON.
+    """Fetch the messages MESSAGE_IDS from CHAT as JSON.
 
     The messages come in the order the ids were given. Ids that do not
     exist are omitted.
@@ -41,7 +41,7 @@ async def _collect_by_id(group: str, message_ids: list[int]) -> list[Message]:
     try:
         if not await client.is_user_authorized():
             raise AuthError()
-        entity = await resolve(client, group)
+        entity = await resolve(client, group, include_users=True)
         group_id = marked_peer_id(entity)
         link_base = message_link_base(entity)
         found = messages_by_id(

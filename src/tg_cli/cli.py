@@ -11,6 +11,7 @@ from typing import Any
 
 import click
 
+from .commands.chats import chats
 from .commands.download import download
 from .commands.get import get
 from .commands.groups import groups
@@ -63,7 +64,7 @@ class _JsonErrorGroup(click.Group):
 
 @click.group(
     cls=_JsonErrorGroup,
-    help="Read your Telegram groups via MTProto (Telethon).",
+    help="Read your Telegram chats and groups via MTProto (Telethon).",
 )
 # Pass ``version=`` so ``python -m tg_cli --version`` works from an
 # uninstalled checkout where package metadata is unavailable; keep
@@ -76,6 +77,7 @@ def main() -> None:
 
 main.add_command(login)
 main.add_command(groups)
+main.add_command(chats)
 main.add_command(messages)
 main.add_command(search)
 main.add_command(thread)

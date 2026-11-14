@@ -1,4 +1,4 @@
-"""``tg download`` — save photos from a Telegram group into a directory."""
+"""``tg download`` — save photos from a Telegram chat into a directory."""
 
 from __future__ import annotations
 
@@ -24,7 +24,7 @@ _DEFAULT_MAX_BYTES = 5 * 1024 * 1024
 
 
 @click.command()
-@click.argument("group")
+@click.argument("group", metavar="CHAT")
 @click.argument("message_ids", type=MESSAGE_ID, nargs=-1, required=True)
 @click.option(
     "--dir",
@@ -47,7 +47,7 @@ def download(
     directory: str,
     max_bytes: int,
 ) -> None:
-    """Save the photos of messages MESSAGE_IDS from GROUP.
+    """Save the photos of messages MESSAGE_IDS from CHAT.
 
     The photos go into the --dir directory. Prints one JSON result per
     id, in the order given.
@@ -80,7 +80,7 @@ async def _download_photos(
     try:
         if not await client.is_user_authorized():
             raise AuthError()
-        entity = await resolve(client, group)
+        entity = await resolve(client, group, include_users=True)
         group_id = marked_peer_id(entity)
         found = messages_by_id(
             await client.get_messages(entity, ids=message_ids)

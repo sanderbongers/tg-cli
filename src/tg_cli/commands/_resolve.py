@@ -1,4 +1,4 @@
-"""Resolve user-supplied group references to a Telethon entity.
+"""Resolve group references and optionally personal chats to an entity.
 
 Accepted forms (in priority order):
 
@@ -25,7 +25,13 @@ from telethon.errors import (
     UsernameNotOccupiedError,
 )
 
-from ._peer import is_group_entity, is_migrated_chat, marked_peer_id
+from ._peer import (
+    is_group_entity,
+    is_migrated_chat,
+    is_user_entity,
+    marked_peer_id,
+    user_display_name,
+)
 
 
 class GroupResolveError(Exception):
@@ -39,25 +45,28 @@ class GroupNotFoundError(GroupResolveError):
 class AmbiguousGroupError(GroupResolveError):
     """Raised when more than one dialog matches a title substring."""
 
-    def __init__(self, query: str, matches: list[str]) -> None:
+    def __init__(
+        self, query: str, matches: list[str], *, kind: str = "group"
+    ) -> None:
         super().__init__(
-            f"ambiguous group {query!r}; matched: " + ", ".join(matches)
+            f"ambiguous {kind} {query!r}; matched: " + ", ".join(matches)
         )
         self.query = query
         self.matches = matches
 
 
-async def resolve(client: Any, reference: str) -> Any:
+async def resolve(
+    client: Any, reference: str, *, include_users: bool = False
+) -> Any:
     """Return the Telethon entity matching ``reference``.
 
     Numeric ids and ``@usernames`` are resolved via
     ``client.get_entity`` so we don't pay an ``iter_dialogs`` walk for
     the precise cases. Title substrings require iterating dialogs.
 
-    The result is always a group/chat/channel entity. ``User`` entities
-    (DMs, bots) — even when an id or ``@handle`` resolves to one — are
-    rejected as ``GroupNotFoundError`` so the skill contract that ``tg``
-    operates on groups is preserved.
+    ``include_users`` also accepts personal chats and bots. Group title
+    matches retain priority over user names so existing group references
+    keep their meaning. The default remains group-only for ``thread``.
     """
     if not isinstance(reference, str) or not reference.strip():
         raise GroupResolveError("group reference must be a non-empty string")
@@ -69,16 +78,20 @@ async def resolve(client: Any, reference: str) -> Any:
     # for bad ``@handles``. Wrap both so the skill's JSON-error contract
     # holds: a typo like ``tg messages @nope`` must not leak a traceback.
     if _looks_like_int(text):
-        return await _get_entity_or_not_found(client, int(text), reference)
+        return await _get_entity_or_not_found(
+            client, int(text), reference, include_users=include_users
+        )
 
     if text.startswith("@"):
-        return await _get_entity_or_not_found(client, text, reference)
+        return await _get_entity_or_not_found(
+            client, text, reference, include_users=include_users
+        )
 
-    return await _resolve_by_title(client, text)
+    return await _resolve_by_title(client, text, include_users=include_users)
 
 
 async def _get_entity_or_not_found(
-    client: Any, key: Any, reference: str
+    client: Any, key: Any, reference: str, *, include_users: bool = False
 ) -> Any:
     try:
         entity = await client.get_entity(key)
@@ -86,6 +99,8 @@ async def _get_entity_or_not_found(
         raise GroupNotFoundError(
             f"no group matched {reference!r}"
         ) from exc
+    if include_users and is_user_entity(entity):
+        return entity
     entity = await _maybe_follow_migration(client, entity, reference)
     if not is_group_entity(entity):
         raise GroupNotFoundError(
@@ -135,19 +150,40 @@ def _looks_like_int(text: str) -> bool:
     return text.isdigit()
 
 
-async def _resolve_by_title(client: Any, query: str) -> Any:
+async def _resolve_by_title(
+    client: Any, query: str, *, include_users: bool = False
+) -> Any:
     needle = query.casefold()
     matches: list[tuple[str, Any]] = []
+    user_matches: dict[int, tuple[str, Any]] = {}
     async for dialog in client.iter_dialogs():
         title = _dialog_title(dialog)
+        if include_users and is_user_entity(dialog.entity):
+            name = user_display_name(dialog.entity)
+            if needle in name.casefold():
+                user_matches[marked_peer_id(dialog.entity)] = (
+                    name, dialog.entity
+                )
         if title is None:
             continue
         if needle in title.casefold():
             matches.append((title, dialog.entity))
 
     if not matches:
+        if len(user_matches) > 1:
+            raise AmbiguousGroupError(
+                query,
+                [
+                    f"{name} (id={peer_id})"
+                    for peer_id, (name, _) in user_matches.items()
+                ],
+                kind="chat",
+            )
+        if user_matches:
+            return next(iter(user_matches.values()))[1]
+        kind = "group or personal chat" if include_users else "group"
         raise GroupNotFoundError(
-            f"no group matched {query!r} (searched all dialogs)"
+            f"no {kind} matched {query!r} (searched all dialogs)"
         )
 
     resolved = await _follow_and_dedupe(client, matches, query)
@@ -223,10 +259,8 @@ async def _follow_and_dedupe(
 def _dialog_title(dialog: Any) -> str | None:
     """Return the title of a group/chat/channel dialog or ``None``.
 
-    Deliberately does **not** fall back to ``dialog.name`` — that field
-    is populated for ``User`` (DM/bot) dialogs too, which would let the
-    title-substring path silently match a DM and violate the skill
-    contract that ``<group>`` references a group.
+    Personal names are matched separately so group title matches keep
+    their priority and group-only callers never resolve a personal chat.
     """
     entity = getattr(dialog, "entity", None)
     title = getattr(entity, "title", None)

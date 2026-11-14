@@ -13,11 +13,12 @@ from typing import Any
 
 
 @dataclass(frozen=True)
-class Group:
-    """A Telegram dialog surfaced by ``tg groups``.
+class Chat:
+    """A Telegram dialog surfaced by ``tg chats`` or ``tg groups``.
 
     ``type`` is one of ``"group"`` (small group), ``"supergroup"``
-    (megagroup channel), or ``"channel"`` (broadcast channel).
+    (megagroup channel), ``"channel"`` (broadcast channel),
+    ``"personal"`` or ``"bot"``.
     """
 
     id: int
@@ -28,6 +29,10 @@ class Group:
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
+
+
+# Preserve the model imported by existing group consumers.
+Group = Chat
 
 
 @dataclass(frozen=True)

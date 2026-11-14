@@ -1,12 +1,12 @@
 ---
 name: telegram
 description: >
-  Read the user's Telegram groups and channels via the `tg` CLI (MTProto
+  Read the user's Telegram personal chats, groups and channels via `tg` (MTProto
   / Telethon wrapper). Trigger when the user asks to list Telegram
-  groups, summarise or digest recent messages in a Telegram group,
+  chats or groups, summarise or digest recent Telegram messages,
   read everything posted since a known message, search past Telegram
   conversations, fetch a Telegram reply thread or specific messages by
-  id, or save photos from a Telegram group. This skill is the source of
+  id, or save photos from a Telegram chat. This skill is the source of
   truth for `tg` command names and flags — do not guess them from
   memory.
 ---
@@ -17,7 +17,7 @@ Provides read access to the user's Telegram account through the `tg`
 CLI. Telegram's Bot API cannot read group history; this skill uses the
 user-account MTProto API (Telethon) instead, so it can list dialogs,
 fetch recent messages, read everything after a known message id,
-full-text search within a group, pull reply threads, fetch messages by
+full-text search within a chat, pull group reply threads, fetch messages by
 id, and save photos to a local directory.
 
 All commands emit **JSON** to stdout on success and a single-line JSON
@@ -32,7 +32,7 @@ exit code 2; every other failure exits with 1.
 
 Trigger this skill when the user asks to:
 
-- list their Telegram groups/channels
+- list their Telegram personal chats, groups or channels
 - summarise / digest recent activity in a Telegram group
 - read everything posted in a group since the last time it was read
 - find a past Telegram message ("what did X say about Y?")
@@ -66,9 +66,30 @@ If the CLI reports `AuthError`, stop and ask the user to run
 
 ## Commands
 
+### `tg chats [--type {personal,bot,group,channel,all}] [--limit N] [--pretty]`
+
+List personal chats, bots, groups and channels. Default type is `all`;
+`personal` includes Saved Messages, and `group` includes supergroups.
+`--limit` applies after filtering. Records have the same keys as
+`tg groups`; personal chats have `type: "personal"`, bots `type: "bot"`,
+both with a positive user `id` and `member_count: null`.
+
+`messages`, `search`, `get` and `download` accept personal chats by
+numeric ID, `@username`, or case-insensitive display-name substring.
+Group title matches take priority over personal names to preserve
+existing group lookups. Use IDs or `@usernames` when a person and a
+group share a name. Multiple personal matches produce an
+`AmbiguousGroupError` listing IDs; the legacy error type names also
+apply to personal lookups. Run `tg chats` to discover IDs and populate
+the session's entity cache before using an uncached personal ID.
+
+For personal messages the legacy `group_id` field holds the positive
+user ID, and `link` is `null`. `thread` is group-only; use `get` with
+`reply_to_id` to fetch a quoted parent in a personal chat.
+
 ### `tg groups [--type {group,channel,all}] [--limit N] [--pretty]`
 
-List the user's dialogs.
+List groups and channels, excluding personal chats and bots.
 
 Output: JSON array of objects with shape:
 ```json
@@ -84,12 +105,13 @@ Output: JSON array of objects with shape:
 first active one when the group has several) and `member_count` may be
 `null`.
 
-### `tg messages <group> [--since TIME] [--after-id N [--through-id M]] [--limit N] [--pretty]`
+### `tg messages <chat> [--since TIME] [--after-id N [--through-id M]] [--limit N] [--pretty]`
 
-Fetch recent messages from `<group>`, oldest first.
+Fetch recent messages from `<chat>`, oldest first.
 
-- `<group>` accepts numeric id, `@username`, or case-insensitive
-  substring of the title (errors on ambiguous match).
+- `<chat>` accepts numeric id, `@username`, or case-insensitive
+  substring of a group title or personal display name (errors on
+  ambiguous match).
 - `TIME` accepts `24h`, `7d`, `2026-04-15`, `2026-04-15T10:00`.
 - Default `--limit` is 100. Without `--after-id` the command returns
   the **newest** `--limit` messages, so anything beyond the limit is
@@ -107,10 +129,10 @@ Fetch recent messages from `<group>`, oldest first.
 
 Output: JSON array of `Message` objects (see shape below).
 
-### `tg search <group> <query> [--since TIME] [--limit N] [--pretty]`
+### `tg search <chat> <query> [--since TIME] [--limit N] [--pretty]`
 
-Full-text search within `<group>`. Newest matches first. Same
-`<group>` / `TIME` semantics as `messages`.
+Full-text search within `<chat>`. Newest matches first. Same
+`<chat>` / `TIME` semantics as `messages`.
 
 Output: JSON array of `Message` objects (possibly empty — exit 0).
 
@@ -123,7 +145,7 @@ from 1 to 2147483647; anything else is a `UsageError` (exit 2).
 Output: JSON array of `Message` objects. Fails with
 `MessageNotFoundError` if the id does not exist in `<group>`.
 
-### `tg get <group> <id>... [--pretty]`
+### `tg get <chat> <id>... [--pretty]`
 
 Fetch specific messages by id, e.g. the parent of a reply that falls
 outside a fetched range (`tg thread` walks down from a root, not up to
@@ -136,7 +158,7 @@ a parent).
 Output: JSON array of `Message` objects in the order the ids were given
 (possibly empty — exit 0).
 
-### `tg download <group> <id>... --dir DIR [--max-bytes N]`
+### `tg download <chat> <id>... --dir DIR [--max-bytes N]`
 
 Save the photos attached to the given messages into `DIR`.
 
@@ -240,9 +262,9 @@ be `null`.
     `https://t.me/c/<channel id>/<topic_id>/<id>`
 
   `<channel id>` is the channel's bare id (`1234567890` for a
-  `group_id` of `-1001234567890`). `link` is `null` in a basic
-  (non-super) group, which has no message permalinks. Take `link` from
-  the output; do not build it by hand.
+  `group_id` of `-1001234567890`). `link` is `null` in personal chats and
+  basic (non-super) groups. Take `link` from the output; do not build it
+  by hand.
 
 ## Error JSON Shape (stderr)
 

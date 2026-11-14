@@ -333,7 +333,7 @@ def test_thread_missing_message_emits_json() -> None:
         # Unknown subcommand.
         (["bogus"], "bogus"),
         # Missing required argument.
-        (["messages"], "GROUP"),
+        (["messages"], "CHAT"),
         (["search", "g"], "QUERY"),
         (["thread", "g"], "MESSAGE_ID"),
         # Bad argument type.

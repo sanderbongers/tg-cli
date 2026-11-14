@@ -1,4 +1,4 @@
-"""``tg search`` — full-text search within a Telegram group as JSON."""
+"""``tg search`` — full-text search within a Telegram chat as JSON."""
 
 from __future__ import annotations
 
@@ -18,7 +18,7 @@ from ._time import parse as parse_time
 
 
 @click.command()
-@click.argument("group")
+@click.argument("group", metavar="CHAT")
 @click.argument("query")
 @click.option(
     "--since",
@@ -43,7 +43,7 @@ from ._time import parse as parse_time
 def search(
     group: str, query: str, since: str | None, limit: int, pretty: bool
 ) -> None:
-    """Full-text search QUERY within GROUP, newest first, as JSON."""
+    """Full-text search QUERY within CHAT, newest first, as JSON."""
     result = asyncio.run(_run_search(group, query, since, limit))
     payload = [m.to_dict() for m in result]
     click.echo(json.dumps(payload, indent=2 if pretty else None))
@@ -58,7 +58,7 @@ async def _run_search(
     try:
         if not await client.is_user_authorized():
             raise AuthError()
-        entity = await resolve(client, group)
+        entity = await resolve(client, group, include_users=True)
         group_id = marked_peer_id(entity)
         link_base = message_link_base(entity)
         collected: list[Message] = []

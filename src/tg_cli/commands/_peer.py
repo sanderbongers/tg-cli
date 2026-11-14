@@ -3,7 +3,8 @@
 Telethon's ``Chat``/``Channel`` entities expose a *bare* positive ``id``,
 but the JSON contract in ``README.md`` and ``skill/SKILL.md`` documents
 *marked* peer ids (e.g. ``-1001234567890`` for channels / supergroups,
-``-12345`` for small chats). Marked ids are required for two reasons:
+``-12345`` for small groups, and positive user ids for personal chats).
+Marked ids are required for two reasons:
 
 1. Consumers need to round-trip the id back through
    ``client.get_entity(int)`` — a bare positive int is interpreted by
@@ -34,14 +35,16 @@ _CHANNEL_TYPES: tuple[type, ...] = (_tl.Channel, _tl.ChannelForbidden)
 
 
 def marked_peer_id(entity: Any) -> int:
-    """Return Telethon's marked peer id for a chat/channel ``entity``.
+    """Return Telethon's marked peer id for a user/chat/channel.
 
     Any Telethon ``Channel`` or ``ChannelForbidden`` — broadcast,
     megagroup, gigagroup, or flag-less — maps to ``-1e12 - id``; plain
-    ``Chat``/``ChatForbidden`` entities map to ``-id``. Matches
-    ``telethon.utils.get_peer_id``.
+    ``Chat``/``ChatForbidden`` entities map to ``-id``. Users keep their
+    positive id. Matches ``telethon.utils.get_peer_id``.
     """
     bare = int(entity.id)
+    if is_user_entity(entity):
+        return bare
     if _is_channel(entity):
         return _CHANNEL_ID_OFFSET - bare
     return -bare
@@ -52,8 +55,11 @@ def message_link_base(entity: Any) -> str | None:
 
     ``https://t.me/<username>`` for a public group or channel,
     ``https://t.me/c/<bare id>`` for a private channel or supergroup,
-    and ``None`` for a basic group, which has no message permalinks.
+    and ``None`` for a basic group or personal chat. A user's public
+    username is not a prefix for links to their private messages.
     """
+    if is_user_entity(entity):
+        return None
     username = public_username(entity)
     if username:
         return f"https://t.me/{username}"
@@ -99,6 +105,19 @@ def is_group_entity(entity: Any) -> bool:
     the resolver so they stay in sync on what counts as a group.
     """
     return bool(getattr(entity, "title", None))
+
+
+def is_user_entity(entity: Any) -> bool:
+    return isinstance(entity, _tl.User)
+
+
+def user_display_name(entity: Any) -> str:
+    if entity.is_self:
+        return "Saved Messages"
+    name = " ".join(
+        part for part in (entity.first_name, entity.last_name) if part
+    )
+    return name or public_username(entity) or f"User {entity.id}"
 
 
 def is_migrated_chat(entity: Any) -> bool:

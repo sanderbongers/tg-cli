@@ -2,9 +2,9 @@
 
 A minimal Python CLI that wraps [Telethon](https://github.com/LonamiWebs/Telethon)
 (MTProto) so [Claude Code](https://claude.com/claude-code) can read your
-Telegram groups on your behalf — list groups, fetch recent messages,
-read everything after a known message id, search within a group, pull
-reply threads, fetch messages by id, and save photos.
+Telegram chats on your behalf: list personal chats and groups, fetch
+recent messages, read everything after a known message id, search a
+chat, pull group reply threads, fetch messages by id, and save photos.
 
 Bundled with a Claude Code skill (`skill/SKILL.md`) that documents the
 CLI for the model so it does not have to guess command names or flags.
@@ -92,7 +92,7 @@ and exit code 2; every other failure exits with 1.
 
 ### `tg groups [--type {group,channel,all}] [--limit N] [--pretty]`
 
-List your dialogs.
+List your groups and channels, excluding personal chats and bots.
 
 ```bash
 tg groups --type group | jq '.[] | .title'
@@ -112,9 +112,42 @@ Example element:
 `username` is the group's `@username` without the `@` (the first active
 one when the group has several), or null for a private group.
 
-### `tg messages <group> [--since TIME] [--after-id N [--through-id M]] [--limit N] [--pretty]`
+### `tg chats [--type {personal,bot,group,channel,all}] [--limit N] [--pretty]`
 
-Fetch recent messages from `<group>`, oldest first.
+List personal chats, bots, groups and channels. The default type is
+`all`; `personal` includes Saved Messages, and `group` includes both
+basic groups and supergroups. `--limit` applies after filtering.
+
+```bash
+tg chats --type personal --pretty
+tg messages @alice --since 24h
+tg search 123456789 "meeting" --limit 20
+tg get "Alice Smith" 123
+tg download @alice 123 --dir photos
+```
+
+Each chat has the same JSON keys as a `tg groups` record. Personal
+chats have `type: "personal"`, bots have `type: "bot"`, and both have
+a positive user `id` and `member_count: null`. `title` contains the
+person's display name, or `Saved Messages` for your own chat. Groups
+and channels keep their existing negative marked IDs and records.
+
+`messages`, `search`, `get` and `download` accept a personal chat's
+numeric ID, `@username`, or case-insensitive display-name substring.
+Name matching checks groups first to preserve existing group lookups;
+only when no group title matches does it consider personal chats and
+bots. If several people match, the error lists their IDs. Use a
+numeric ID or `@username` to disambiguate, especially when a person
+and a group share a name. Run `tg chats` to discover IDs and populate
+the session's entity cache before using an uncached personal ID.
+
+`thread` remains group-only. Its reply-thread API cannot retrieve
+threads in personal chats; use `get` to fetch a quoted parent by its
+`reply_to_id` instead.
+
+### `tg messages <chat> [--since TIME] [--after-id N [--through-id M]] [--limit N] [--pretty]`
+
+Fetch recent messages from `<chat>`, oldest first.
 
 ```bash
 tg messages "My Dev Group" --since 24h
@@ -123,8 +156,9 @@ tg messages --since 2026-04-15T10:00 -- -1001234567890
 tg messages @mydevgroup --after-id 4200 --through-id 4950 --limit 100
 ```
 
-`<group>` accepts a numeric id, `@username`, or a case-insensitive
-substring of the title (errors on ambiguous match).
+`<chat>` accepts a numeric id, `@username`, or a case-insensitive
+substring of the group title or personal display name (errors on
+ambiguous match).
 
 > **Negative numeric ids.** Raw supergroup/channel ids start with `-`
 > (e.g. `-1001234567890`), which the CLI parser mistakes for an option
@@ -170,9 +204,9 @@ oldest first.
 **Paging through a range.** To read every message posted after a
 stored cursor `C` (the id of the last message you have already read):
 
-1. Read the newest id `H`: run `tg messages <group> --limit 1` and take
+1. Read the newest id `H`: run `tg messages <chat> --limit 1` and take
    the `id` of the message it returns.
-2. Run `tg messages <group> --after-id C --through-id H --limit L`.
+2. Run `tg messages <chat> --after-id C --through-id H --limit L`.
 3. If the page holds `L` messages, set `C` to the id of its last
    message and repeat step 2. A page shorter than `L` means the range
    is drained, and `H` is the cursor for the next run.
@@ -188,9 +222,9 @@ happens when the previous page was exactly full or nothing new was
 posted. If the newest visible id is below the stored cursor (messages
 were deleted), there is nothing new; never move a cursor backwards.
 
-### `tg search <group> <query> [--since TIME] [--limit N] [--pretty]`
+### `tg search <chat> <query> [--since TIME] [--limit N] [--pretty]`
 
-Full-text search within `<group>`, newest matches first.
+Full-text search within `<chat>`, newest matches first.
 
 ```bash
 tg search "My Dev Group" "deploy" --since 30d
@@ -208,7 +242,7 @@ tg thread "My Dev Group" 12345
 `<message_id>` is a whole number from 1 to 2147483647; anything else is
 a `UsageError` (exit 2).
 
-### `tg get <group> <id>... [--pretty]`
+### `tg get <chat> <id>... [--pretty]`
 
 Fetch specific messages by id, for example the parent of a reply that
 falls outside the range you fetched. The output is an array of messages
@@ -224,7 +258,7 @@ At least one id is required, each a whole number from 1 to 2147483647.
 Ids that do not exist are left out and the command still exits 0, so an
 empty array is a valid result.
 
-### `tg download <group> <id>... --dir DIR [--max-bytes N]`
+### `tg download <chat> <id>... --dir DIR [--max-bytes N]`
 
 Save the photos attached to the given messages into `DIR`.
 
@@ -339,6 +373,9 @@ object:
   with the keys `from_id` (a marked peer id, the form `group_id`
   uses), `from_name` and `date` (ISO 8601); each of the three can be
   null.
+- `group_id` — the chat's marked peer ID. The historical field name
+  is preserved for compatibility; it is positive for personal chats
+  and bots, negative for groups and channels.
 - `link` — a permalink to the message, in one of four shapes:
   - public group or channel: `https://t.me/<username>/<id>`
   - public forum topic: `https://t.me/<username>/<topic_id>/<id>`
@@ -347,9 +384,9 @@ object:
     `https://t.me/c/<channel id>/<topic_id>/<id>`
 
   `<channel id>` is the channel's bare id: `1234567890` for a
-  `group_id` of `-1001234567890`. `link` is null in a basic
-  (non-super) group, where Telegram has no message permalinks. A
-  message with a null `topic_id` gets the shape without a topic, so
+  `group_id` of `-1001234567890`. `link` is null in personal chats and
+  basic (non-super) groups. A message with a null `topic_id` gets the
+  shape without a topic, so
   the service message that creates a topic links like an ordinary
   message.
 

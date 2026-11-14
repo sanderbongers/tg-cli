@@ -1098,3 +1098,21 @@ def test_download_overwrites_an_existing_file_only_once_complete(
     assert during_download == [b"old"]
     assert target.read_bytes() == b"new"
     assert _names(tmp_path) == [target.name]
+
+
+def test_download_personal_chat_uses_positive_peer_id(tmp_path) -> None:
+    user = types.User(id=42, first_name="Alice", username="alice")
+    client = _fake_client(entity=user, stored=[_photo_msg(7)])
+    with patch(
+        "tg_cli.commands.download.make_client", return_value=client
+    ):
+        result = CliRunner().invoke(
+            cli.main, ["download", "@alice", "7", "--dir", str(tmp_path)]
+        )
+    assert result.exit_code == 0, result.output
+    saved = json.loads(result.stdout)[0]
+    assert saved["status"] == "saved"
+    assert saved["path"] == str(tmp_path / "42_7.jpg")
+    assert (tmp_path / "42_7.jpg").read_bytes() == b"jpeg"
+    client.get_entity.assert_awaited_once_with("@alice")
+    client.disconnect.assert_awaited_once()
