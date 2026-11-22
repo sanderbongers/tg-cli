@@ -64,6 +64,7 @@ class _JsonErrorGroup(click.Group):
 
 @click.group(
     cls=_JsonErrorGroup,
+    invoke_without_command=True,
     help="Read your Telegram chats and groups via MTProto (Telethon).",
 )
 # Pass ``version=`` so ``python -m tg_cli --version`` works from an
@@ -71,8 +72,11 @@ class _JsonErrorGroup(click.Group):
 # ``package_name`` so installed envs still display the metadata-derived
 # program name. Keep in sync with pyproject.toml's [project].version.
 @click.version_option(version="0.2.0", package_name="tg-cli")
-def main() -> None:
+@click.pass_context
+def main(ctx: click.Context) -> None:
     """Entry point referenced by the ``tg`` console script."""
+    if ctx.invoked_subcommand is None:
+        click.echo(ctx.get_help())
 
 
 main.add_command(login)

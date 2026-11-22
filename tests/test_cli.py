@@ -33,6 +33,13 @@ def test_help_runs_cleanly() -> None:
     assert "Telegram" in result.output
 
 
+def test_no_arguments_shows_help() -> None:
+    runner = CliRunner()
+    result = runner.invoke(cli.main, [])
+    assert result.exit_code == 0
+    assert result.output == runner.invoke(cli.main, ["--help"]).output
+
+
 def test_version_prints_the_project_version() -> None:
     """`tg --version` exits 0 even without installed package metadata,
     and prints the version `pyproject.toml` declares."""
